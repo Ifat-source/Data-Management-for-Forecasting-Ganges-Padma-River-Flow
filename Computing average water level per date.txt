@@ -1,0 +1,28 @@
+import pandas as pd
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename, asksaveasfilename
+
+# Step 1: Select the Excel file
+Tk().withdraw()  # Hide root Tk window
+print("Please select the Excel file (1st column: DateTime, 2nd column: Water Level)...")
+input_file = askopenfilename(filetypes=[("Excel Files", "*.xlsx *.xls")])
+
+# Step 2: Read Excel file
+df = pd.read_excel(input_file, header=None)  # No header assumed
+df.columns = ['DateTime', 'Water Level']     # Rename for clarity
+
+# Step 3: Convert DateTime column to datetime format and extract the date part
+df['DateTime'] = pd.to_datetime(df['DateTime'])
+df['Date'] = df['DateTime'].dt.date
+
+# Step 4: Compute average water level per date
+avg_df = df.groupby('Date')['Water Level'].mean().reset_index()
+avg_df.columns = ['Date', 'Average Water Level']
+
+# Step 5: Save result to a new Excel file
+print("Select a location to save the result file...")
+output_file = asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
+avg_df.to_excel(output_file, index=False)
+
+print(" Average water level per date saved to:", output_file)
+

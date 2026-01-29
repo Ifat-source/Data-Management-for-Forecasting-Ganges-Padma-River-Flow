@@ -1,0 +1,83 @@
+import pandas as pd
+import os
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+
+
+def input_new_rows(df):
+    print("\nEnter new rows to insert (empty Date to finish):")
+    while True:
+        date_str = input("Date (DD/MM/YYYY): ").strip()
+        if date_str == "":
+            break
+        discharge_str = input("Discharge (leave blank for missing): ").strip()
+
+        try:
+            date = pd.to_datetime(date_str, dayfirst=True)
+        except Exception:
+            print("Invalid date format! Please try again.")
+            continue
+
+        if discharge_str == "":
+            discharge = None
+        else:
+            try:
+                discharge = float(discharge_str)
+            except Exception:
+                print("Invalid discharge value! Please enter a number or leave blank.")
+                continue
+
+        # Append new row
+        df = df.append({'Date': date, 'Discharge': discharge}, ignore_index=True)
+        print(f"Added row: Date={date.date()}, Discharge={discharge}")
+    return df
+
+
+def main():
+    # Step 1: Select Excel file
+    Tk().withdraw()
+    print("Please select your Excel file with 'Date' and 'Discharge' columns.")
+    file_path = askopenfilename(filetypes=[("Excel files", "*.xlsx *.xls")])
+    if not file_path:
+        print("No file selected. Exiting.")
+        return
+
+    # Step 2: Load file and parse dates
+    try:
+        df = pd.read_excel(file_path)
+        df['Date'] = pd.to_datetime(df['Date'], dayfirst=True)
+    except Exception as e:
+        print(f"Error reading Excel file: {e}")
+        return
+
+    print("\nCurrent data preview:")
+    print(df.head())
+
+    # Step 3: Input new rows interactively
+    df = input_new_rows(df)
+
+    # Step 4: Remove duplicates and sort by date
+    df.drop_duplicates(subset='Date', keep='last', inplace=True)
+    df.sort_values(by='Date', inplace=True)
+
+    # Step 5: Detect missing dates and insert blank discharges
+    df.set_index('Date', inplace=True)
+    full_dates = pd.date_range(start=df.index.min(), end=df.index.max(), freq='D')
+    df_full = df.reindex(full_dates)
+    df_full.index.name = 'Date'
+    df_full.reset_index(inplace=True)
+
+    # Step 6: Save to Downloads folder
+    downloads_folder = os.path.join(os.path.expanduser("~"), "Downloads")
+    output_file = os.path.join(downloads_folder, "Discharge_with_Missing_Dates_and_Inserted_Rows.xlsx")
+
+    try:
+        df_full.to_excel(output_file, index=False)
+        print(f"\nFile saved successfully at:\n{output_file}")
+    except Exception as e:
+        print(f"Failed to save Excel file: {e}")
+
+
+if __name__ == "__main__":
+    main()
+

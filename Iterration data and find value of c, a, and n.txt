@@ -1,0 +1,115 @@
+import pandas as pd
+import numpy as np
+from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+from tkinter import Tk, filedialog
+import os
+import sys
+
+# Hide tkinter window
+Tk().withdraw()
+
+# === Step 1: File Selection ===
+file_path = filedialog.askopenfilename(
+    title="Select Excel File",
+    filetypes=[("Excel files", "*.xlsx *.xls")]
+)
+
+if not file_path:
+    print("No file selected.")
+    sys.exit()
+
+# === Step 2: Determine File Extension and Read Excel ===
+file_ext = os.path.splitext(file_path)[-1].lower()
+
+try:
+    if file_ext == '.xlsx':
+        df = pd.read_excel(file_path, engine='openpyxl')
+    elif file_ext == '.xls':
+        df = pd.read_excel(file_path, engine='xlrd')
+    else:
+        raise ValueError("Unsupported file type. Please select a .xls or .xlsx file.")
+except Exception as e:
+    print(f" Error reading file:\n{e}")
+    sys.exit()
+
+# === Step 3: Prepare Data ===
+df.columns = [col.lower().strip() for col in df.columns]
+required_cols = ['date', 'water level', 'discharge']
+
+for col in required_cols:
+    if col not in df.columns:
+        print(f" Missing required column: {col}")
+        sys.exit()
+
+df.dropna(subset=['water level', 'discharge'], inplace=True)
+
+date = df['date']
+h = df['water level'].astype(float).values
+Q_obs = df['discharge'].astype(float).values
+
+# === Step 4: Model and Optimization ===
+def discharge_model(params, h):
+    c, a, n = params
+    return c * (h + a) ** n
+
+def objective(params):
+    Q_est = discharge_model(params, h)
+    return np.mean((Q_obs - Q_est) ** 2)
+
+initial_guess = [1.0, 0.1, 1.0]
+result = minimize(objective, initial_guess, method='Nelder-Mead')
+c_final, a_final, n_final = result.x
+
+# === Step 5: Calculate Estimated Discharge and Error ===
+Q_est = discharge_model(result.x, h)
+error_pct = np.abs(Q_obs - Q_est) / Q_obs * 100
+
+# === Step 6: Save Final Data to Excel ===
+output_df = pd.DataFrame({
+    'Date': date,
+    'Water Level': h,
+    'Observed Discharge': Q_obs,
+    'Estimated Discharge': Q_est,
+    'Error (%)': error_pct
+})
+
+base_name = os.path.splitext(os.path.basename(file_path))[0]
+output_excel = os.path.join(os.path.dirname(file_path), f"{base_name}_results.xlsx")
+
+output_df.to_excel(output_excel, index=False, sheet_name='Results')
+
+# Save parameter values
+param_df = pd.DataFrame({
+    'Parameter': ['c', 'a', 'n'],
+    'Value': [c_final, a_final, n_final]
+})
+
+with pd.ExcelWriter(output_excel, mode='a', engine='openpyxl') as writer:
+    param_df.to_excel(writer, index=False, sheet_name='Final_Parameters')
+
+# Save Observed vs Estimated as plot and also Excel sheet
+plot_df = pd.DataFrame({'Observed': Q_obs, 'Estimated': Q_est})
+with pd.ExcelWriter(output_excel, mode='a', engine='openpyxl') as writer:
+    plot_df.to_excel(writer, index=False, sheet_name='Graph_Data')
+
+# === Step 7: Plot and Save Figure ===
+plt.figure(figsize=(8, 5))
+plt.plot(Q_obs, 'bo-', label='Observed')
+plt.plot(Q_est, 'r*-', label='Estimated')
+plt.xlabel('Record Index')
+plt.ylabel('Discharge')
+plt.title('Observed vs Estimated Discharge')
+plt.legend()
+plt.grid(True)
+
+plot_path = os.path.join(os.path.dirname(file_path), "Observed_vs_Estimated_Discharge.png")
+plt.savefig(plot_path)
+plt.close()
+
+# === Step 8: Final Output ===
+print("\n Optimization Complete")
+print(f"   Final Parameters:\n   c = {c_final:.6f}, a = {a_final:.6f}, n = {n_final:.6f}")
+print(f"\n Results saved to: {output_excel}")
+print(f" Plot saved to: {plot_path}")
+

@@ -1,0 +1,41 @@
+import pandas as pd
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename, asksaveasfilename
+
+# Step 1: Open Excel file
+Tk().withdraw()
+print("Select the Excel file with: Date, Water Level, Date, Discharge")
+input_file = askopenfilename(filetypes=[("Excel Files", "*.xlsx *.xls")])
+
+# Step 2: Read the Excel file
+df = pd.read_excel(input_file, header=None)
+df.columns = ['Date_WL', 'Water Level', 'Date_Q', 'Discharge']
+
+# Step 3: Clean/standardize date columns (handle anomalies)
+df['Date_WL'] = pd.to_datetime(df['Date_WL'], errors='coerce')
+df['Date_Q'] = pd.to_datetime(df['Date_Q'], errors='coerce')
+
+# Remove completely invalid dates
+wl_df = df[['Date_WL', 'Water Level']].dropna(subset=['Date_WL'])
+q_df = df[['Date_Q', 'Discharge']].dropna(subset=['Date_Q'])
+
+# Step 4: Group and average by date (handles duplicates if any)
+wl_grouped = wl_df.groupby('Date_WL').mean().reset_index()
+q_grouped = q_df.groupby('Date_Q').mean().reset_index()
+
+# Step 5: Merge both DataFrames on the same date
+merged = pd.merge(wl_grouped, q_grouped, left_on='Date_WL', right_on='Date_Q', how='outer')
+
+# Step 6: Combine the date columns into a single 'Date'
+merged['Date'] = merged['Date_WL'].combine_first(merged['Date_Q'])
+
+# Step 7: Select and reorder final columns
+final_df = merged[['Date', 'Water Level', 'Discharge']].sort_values(by='Date')
+
+# Step 8: Save result to new Excel file
+print("?? Select location to save the result...")
+output_file = asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel Files", "*.xlsx")])
+final_df.to_excel(output_file, index=False)
+
+print(" Successfully saved average Water Level and Discharge by date to:", output_file)
+
